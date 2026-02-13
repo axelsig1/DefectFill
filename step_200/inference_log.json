@@ -1,0 +1,38 @@
+{
+    "timestamp": "2026-02-08T11:25:28",
+    "checkpoint": "/proj/uppmax2025-2-369/axelsig_thesis/DefectFill2/output/concrete_model/concrete_model_default/checkpoints/checkpoint_200.pt",
+    "object_class": "concrete",
+    "defect_type": "crack",
+    "results": [
+        {
+            "output_idx": 0,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_19.png",
+            "lpips_score": 0.5816134810447693
+        },
+        {
+            "output_idx": 1,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_20.png",
+            "lpips_score": 0.597787082195282
+        },
+        {
+            "output_idx": 2,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_21.png",
+            "lpips_score": 0.6024221777915955
+        },
+        {
+            "output_idx": 3,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_22.png",
+            "lpips_score": 0.6048642992973328
+        },
+        {
+            "output_idx": 4,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_23.png",
+            "lpips_score": 0.6072781085968018
+        },
+        {
+            "output_idx": 5,
+            "input_image": "/scratch/MVTec2/concrete/test/good/noncrack_noncrack_concrete_wall_76_24.png",
+            "lpips_score": 0.5880360007286072
+        }
+    ]
+}
