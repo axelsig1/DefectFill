@@ -4,7 +4,7 @@
 
 Currently, this repository is tuned to generate **cracks in concrete** (using the MVTec AD dataset) as a proof-of-concept. The ultimate goal of this project is to apply these techniques to generate synthetic training data for **cast iron defects** (e.g., blowholes, cracks) in foundry settings.
 
-## 🖼️ Visual Results
+## Visual Results
 
 Below are generated examples showing the model's ability to fill healthy regions with realistic defect textures while preserving the surrounding structural integrity.
 
@@ -14,7 +14,7 @@ Below are generated examples showing the model's ability to fill healthy regions
 | ![Result 3](triplet_results/triplet_0002.png) | ![Result 4](triplet_results/triplet_0003.png) | 
 | ![Result 5](triplet_results/triplet_0004.png) | ![Result 6](triplet_results/triplet_0005.png) |
 
-## 🚀 Methodology
+## Methodology
 
 This implementation leverages **Stable Diffusion 2 Inpainting** with **LoRA (Low-Rank Adaptation)** fine-tuning. To ensure high-quality generation that blends seamlessly with the object, the training process utilizes a dual-branch strategy:
 
@@ -23,7 +23,7 @@ This implementation leverages **Stable Diffusion 2 Inpainting** with **LoRA (Low
 
 During inference, we utilize **LPIPS (Learned Perceptual Image Patch Similarity)** to automatically select the most realistic samples from a batch of generations.
 
-## 🛠️ Installation
+## Installation
 
 1.  Clone the repository:
     ```bash
@@ -38,10 +38,10 @@ During inference, we utilize **LPIPS (Learned Perceptual Image Patch Similarity)
 
 **Requirements include:** `torch`, `diffusers`, `transformers`, `peft`, `lpips`, and `albumentations`.
 
-## 📂 Data Preparation
+## Data Preparation
 
 This project follows the **MVTec AD** dataset structure. Ensure your data is organized as follows:
-
+```
 data/
 └── concrete/              # Object Class
 ├── train/
@@ -51,8 +51,8 @@ data/
 │       └── crack/     # Corresponding binary masks
 └── test/
 └── good/          # Healthy reference images
-
-## 💻 Usage
+```
+## Usage
 
 ### 1. Training
 
