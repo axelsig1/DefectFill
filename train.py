@@ -231,7 +231,7 @@ def train(args):
                 mask = random_masks[i, 0]
                 h, w = mask.shape
                 for _ in range(num_random_boxes):
-                    min_size, max_size = int(min(h, w) * 0.03), int(min(h, w) * 0.15)
+                    min_size, max_size = int(min(h, w) * 0.03), int(min(h, w) * 0.25)
                     rect_h = torch.randint(min_size, max(min_size+1, max_size), (1,)).item()
                     rect_w = torch.randint(min_size, max(min_size+1, max_size), (1,)).item()
                     y = torch.randint(0, max(1, h - rect_h), (1,)).item()
@@ -350,4 +350,5 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     
+
     train(args)
