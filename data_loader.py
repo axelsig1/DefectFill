@@ -162,7 +162,23 @@ class MVTecDefectDataset(Dataset):
             mask = mask.astype(np.float32) / 255.0  # Normalize to [0, 1]
         else:
             mask = self.generate_random_mask((image.shape[0], image.shape[1]))
-            
+
+        # === Smart Resizing ===
+        h, w = image.shape[:2]
+        target_size = 512
+
+        # Case 1: Image is too small (e.g., 400x400) -> Upscale it
+        if h < target_size or w < target_size:
+            # Use INTER_CUBIC to keep lines as sharp as possible
+            image = cv2.resize(image, (target_size, target_size), interpolation=cv2.INTER_CUBIC)
+            if mask is not None:
+                # Use NEAREST for masks to avoid creating gray pixels at edges
+                mask = cv2.resize(mask, (target_size, target_size), interpolation=cv2.INTER_NEAREST)
+        
+        # Case 2: Image is large (1024x1024) -> Do nothing here! 
+        # The RandomCrop in the transform will handle it, preserving full detail.
+
+        
         # Apply Albumentations transformations
         if self.transform:
             augmented = self.transform(image=image, mask=mask)
@@ -190,7 +206,7 @@ def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None):
     # Training pipeline: Includes random scaling for better generalization
     train_transform = A.Compose([
         A.RandomScale(scale_limit=(0.0, 0.125), p=1.0),
-        A.Resize(512, 512),
+        A.RandomCrop(height=512, width=512),
         A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ToTensorV2()
     ], additional_targets={'mask': 'mask', 'background': 'image', 'adjusted_mask': 'mask'})
@@ -233,4 +249,5 @@ def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None):
         pin_memory=True
     )
     
+
     return train_loader, test_loader
