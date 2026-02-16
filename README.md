@@ -91,10 +91,10 @@ python inference.py \
   --guidance_scale 2.0
 ```
 
-## 🔮 Future Work
+## Future Work
 Cast Iron Adaptation: Transitioning the domain from concrete textures to metal surfaces to detect manufacturing defects in foundries.
 
 Defect Variety: Expanding support for blowholes, shrinkage, and sand inclusions.
 
-## 📄 References
+## References
 This code is an implementation based on the concepts of "DefectFill" for industrial anomaly generation. 	arXiv:2503.13985
