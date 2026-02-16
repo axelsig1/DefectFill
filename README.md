@@ -64,8 +64,8 @@ python train.py \
   --object_class concrete \
   --defect_type crack \
   --output_dir ./output_concrete \
-  --lambda_defect 0.5 \
-  --lambda_obj 0.2 \
+  --lora_rank 8 \
+  --lora_alpha 16 \
   --max_train_steps 2000
 ```
 
@@ -86,8 +86,9 @@ python inference.py \
   --defect_type crack \
   --data_dir ./data \
   --output_dir ./generated_cracks \
-  --total_images 100 \
-  --num_samples 8
+  --total_images 6 \
+  --num_samples 8 \
+  --guidance_scale 2.0
 ```
 
 ## 🔮 Future Work
