@@ -44,13 +44,13 @@ This project follows the **MVTec AD** dataset structure. Ensure your data is org
 ```
 data/
 └── concrete/              # Object Class
-├── train/
-│   ├── defective/
-│   │   └── crack/     # Defect images
-│   └── defective_masks/
-│       └── crack/     # Corresponding binary masks
-└── test/
-└── good/          # Healthy reference images
+    ├── train/
+    │   ├── defective/
+    │   │   └── crack/     # Defect images
+    │   └── defective_masks/
+    │       └── crack/     # Corresponding binary masks
+    └── test/
+        └── good/          # Healthy reference images
 ```
 ## Usage
 
