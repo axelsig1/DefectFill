@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from albumentations.pytorch import ToTensorV2
 
 class MVTecDefectDataset(Dataset):
-    def __init__(self, root_dir, object_class, split="train", transform=None, defect_type=None):
+    def __init__(self, root_dir, object_class, split="train", transform=None, defect_type=None, dilate_mask=False, mask_kernel_size=3):
         """
         Args:
             root_dir (str): Directory with MVTec AD dataset
@@ -23,6 +23,8 @@ class MVTecDefectDataset(Dataset):
         self.split = split
         self.transform = transform
         self.target_defect_type = defect_type
+        self.dilate_mask = dilate_mask
+        self.mask_kernel_size = mask_kernel_size
         
         print(f"Initializing Dataset: root_dir={self.root_dir}, object_class={object_class}, split={split}")
         if defect_type:
@@ -155,18 +157,22 @@ class MVTecDefectDataset(Dataset):
         if mask_path is not None:
             mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
             
-            # Dilate mask (test for thin cracks)
-            kernel = np.ones((3, 3), np.uint8)
-            mask = cv2.dilate(mask, kernel, iterations=1)
+            # Dilate mask (only if enabled)
+            if self.dilate_mask:
+                # Ensure kernel size is odd, otherwise OpenCV crashes
+                k_size = self.mask_kernel_size if self.mask_kernel_size % 2 == 1 else self.mask_kernel_size + 1
+                
+                kernel = np.ones((k_size, k_size), np.uint8)
+                mask = cv2.dilate(mask, kernel, iterations=1)
 
             mask = mask.astype(np.float32) / 255.0  # Normalize to [0, 1]
         else:
             mask = self.generate_random_mask((image.shape[0], image.shape[1]))
-
-        # === Smart Resizing ===
+        
+        # --- NEW CODE START: SMART RESIZING ---
         h, w = image.shape[:2]
         target_size = 512
-
+        
         # Case 1: Image is too small (e.g., 400x400) -> Upscale it
         if h < target_size or w < target_size:
             # Use INTER_CUBIC to keep lines as sharp as possible
@@ -177,8 +183,8 @@ class MVTecDefectDataset(Dataset):
         
         # Case 2: Image is large (1024x1024) -> Do nothing here! 
         # The RandomCrop in the transform will handle it, preserving full detail.
+        # --- NEW CODE END ---
 
-        
         # Apply Albumentations transformations
         if self.transform:
             augmented = self.transform(image=image, mask=mask)
@@ -200,12 +206,12 @@ class MVTecDefectDataset(Dataset):
             'object_class': self.object_class
         }
 
-def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None):
+def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None, dilate_mask=False, mask_kernel_size=3):
     """Creates training and testing DataLoaders with preprocessing pipelines"""
     
     # Training pipeline: Includes random scaling for better generalization
     train_transform = A.Compose([
-        A.RandomScale(scale_limit=(0.0, 0.125), p=1.0),
+        A.RandomScale(scale_limit=(0.0, 0.125), p=1.0),  # Random scale between 1.0 and 1.125
         A.RandomCrop(height=512, width=512),
         A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ToTensorV2()
@@ -223,14 +229,18 @@ def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None):
         object_class=object_class,
         split="train",
         transform=train_transform,
-        defect_type=defect_type
+        defect_type=defect_type,
+        dilate_mask=dilate_mask,
+        mask_kernel_size=mask_kernel_size
     )
     
     test_dataset = MVTecDefectDataset(
         root_dir=root_dir,
         object_class=object_class,
         split="test",
-        transform=test_transform
+        transform=test_transform,
+        dilate_mask=dilate_mask,
+        mask_kernel_size=mask_kernel_size
     )
     
     train_loader = DataLoader(
@@ -249,5 +259,4 @@ def get_data_loaders(root_dir, object_class, batch_size=4, defect_type=None):
         pin_memory=True
     )
     
-
     return train_loader, test_loader
