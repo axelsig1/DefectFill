@@ -81,7 +81,9 @@ def train(args):
         root_dir=args.data_dir,
         object_class=args.object_class,
         batch_size=args.batch_size,
-        defect_type=args.defect_type
+        defect_type=args.defect_type,
+        dilate_mask=args.dilate_mask,
+        mask_kernel_size=args.mask_kernel_size
     )
     
     # Initialize model
@@ -340,8 +342,13 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=-1, help="-1 for timestamp-based seed")
     parser.add_argument("--resume_from", type=str, default=None)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2)
+    parser.add_argument("--dilate_mask", type=str, default="False", help="Whether to dilate masks (True/False)")
+    parser.add_argument("--mask_kernel_size", type=int, default=3, help="Size of dilation kernel (must be odd, e.g. 3, 5, 7)")
     
     args = parser.parse_args()
+
+    # Helper to convert string "True" to boolean
+    args.dilate_mask = args.dilate_mask.lower() == "true"
     
     # Seed setup
     if args.seed == -1:
@@ -350,5 +357,4 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     
-
     train(args)
