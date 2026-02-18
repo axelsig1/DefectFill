@@ -1,5 +1,6 @@
 import os
 import json
+import cv2
 import torch
 import argparse
 import numpy as np
@@ -10,6 +11,71 @@ from model import DefectFillModel
 from utils import load_checkpoint, compute_spatial_lpips, compute_spatial_lpips_batch
 from torchvision.utils import save_image
 from torchvision import transforms
+
+
+def smart_crop_dynamic(image, mask, base_size=512):
+    """
+    Crops the image to fit the defect. 
+    - If defect < 512: Crops 512x512 (No Resize).
+    - If defect > 512: Crops square enclosing defect, then resizes to 512.
+    """
+    h, w = image.shape[:2]
+    
+    # Find the Bounding Box of the defect
+    y_indices, x_indices = np.where(mask > 0)
+    
+    if len(y_indices) == 0:
+        # No defect? Return center crop 512
+        cy, cx = h // 2, w // 2
+        crop_size = base_size
+    else:
+        min_y, max_y = np.min(y_indices), np.max(y_indices)
+        min_x, max_x = np.min(x_indices), np.max(x_indices)
+        
+        defect_h = max_y - min_y
+        defect_w = max_x - min_x
+        
+        # Center of the defect
+        cy = min_y + defect_h // 2
+        cx = min_x + defect_w // 2
+        
+        # Determine the Crop Size
+        # We need a box big enough to hold the defect + some context padding
+        # But at minimum, it must be 512.
+        max_dim = max(defect_h, defect_w)
+        padding = 50 # Add 50px context around edges if possible
+        
+        crop_size = max(base_size, max_dim + padding)
+    
+    # Calculate Crop Coordinates (Square Box)
+    half_size = crop_size // 2
+    x1 = cx - half_size
+    y1 = cy - half_size
+    x2 = x1 + crop_size
+    y2 = y1 + crop_size
+    
+    # Handle Edge Cases (Shift box if it goes out of bounds)
+    if x1 < 0: x2 -= x1; x1 = 0
+    if y1 < 0: y2 -= y1; y1 = 0
+    if x2 > w: x1 -= (x2 - w); x2 = w
+    if y2 > h: y1 -= (y2 - h); y2 = h
+    
+    # Double check we didn't shrink below image dims (e.g. if image is smaller than crop_size)
+    x1 = max(0, x1); y1 = max(0, y1)
+    x2 = min(w, x2); y2 = min(h, y2)
+
+    # Perform the Crop
+    crop_img = image[y1:y2, x1:x2]
+    crop_mask = mask[y1:y2, x1:x2]
+    
+    # Resize ONLY if the crop is larger than 512
+    # (If crop_size was 512, this does nothing. If it was 570, it shrinks slightly.)
+    if crop_img.shape[0] != base_size or crop_img.shape[1] != base_size:
+        crop_img = cv2.resize(crop_img, (base_size, base_size), interpolation=cv2.INTER_AREA)
+        # Use NEAREST for mask to keep edges sharp
+        crop_mask = cv2.resize(crop_mask, (base_size, base_size), interpolation=cv2.INTER_NEAREST)
+        
+    return crop_img, crop_mask
 
 
 def count_available_resources(data_dir, object_class, defect_type):
@@ -257,11 +323,47 @@ def inference(args):
             good_path = os.path.join(good_dir, good_files[good_idx])
             mask_path = os.path.join(mask_dir, mask_files[mask_idx])
             
-            img = Image.open(good_path).convert("RGB")
-            img_tensor = transform(img).unsqueeze(0).to(device, dtype=dtype)
+            print(f"\n[{output_idx+1}/{len(generation_plan)}] Processing: {good_files[good_idx]}")
             
-            mask_img = Image.open(mask_path).convert("L").resize((512, 512), Image.NEAREST)
-            mask_tensor = transforms.ToTensor()(mask_img).unsqueeze(0).to(device, dtype=dtype)
+            # --- SMART CROP LOGIC START ---
+            
+            # Load Images as Numpy Arrays (for Smart Crop)
+            # Use PIL and convert to numpy to ensure RGB format is consistent
+            image_pil = Image.open(good_path).convert("RGB")
+            mask_pil = Image.open(mask_path).convert("L")
+            
+            image_np = np.array(image_pil)
+            mask_np = np.array(mask_pil)
+            
+            # --- DILATION LOGIC (Must match training) ---
+            if args.dilate_mask:
+                # Ensure kernel size is odd
+                k_size = args.mask_kernel_size if args.mask_kernel_size % 2 == 1 else args.mask_kernel_size + 1
+                kernel = np.ones((k_size, k_size), np.uint8)
+                
+                # Apply dilation
+                # Note: mask_np is usually 0-255. cv2.dilate works fine on uint8.
+                mask_np = cv2.dilate(mask_np, kernel, iterations=1)
+                
+                print(f"Dilated mask with kernel {k_size}")
+            # --------------------------------------------------
+
+            # Apply Smart Crop
+            # This returns a 512x512 patch focused on the defect area
+            # (No resizing blur unless defect > 512px)
+            crop_img_np, crop_mask_np = smart_crop_dynamic(image_np, mask_np, base_size=512)
+            
+            # Convert to Tensor
+            
+            # Image: [0, 255] -> [0.0, 1.0] -> Normalize to [-1.0, 1.0]
+            # transforms.ToTensor() handles the HWC->CHW and /255 division automatically
+            img_tensor = transforms.ToTensor()(crop_img_np)
+            img_tensor = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])(img_tensor)
+            img_tensor = img_tensor.unsqueeze(0).to(device, dtype=dtype)
+            
+            # Mask: [0, 255] -> [0.0, 1.0]
+            mask_tensor = transforms.ToTensor()(crop_mask_np).unsqueeze(0).to(device, dtype=dtype)
+            
             
             with torch.no_grad():
                 defect_img, lpips_score = fixed_inference_batch(
@@ -269,10 +371,14 @@ def inference(args):
                     num_samples=args.num_samples, steps=args.steps, guidance_scale=args.guidance_scale, batch_size=batch_size
                 )
             
+            # Save generated image
             output_name = f"{output_idx:04d}_generated.png"
             output_path = os.path.join(defect_output_dir, output_name)
             save_image((defect_img.float() + 1) / 2, output_path)
+            
+            # Save mask and original (These will now be the CROPPED versions, which is correct)
             save_image(mask_tensor.float(), os.path.join(defect_output_dir, f"{output_idx:04d}_mask.png"))
+            save_image((img_tensor.float() + 1) / 2, os.path.join(defect_output_dir, f"{output_idx:04d}_original.png"))
             
             inference_log["results"].append({
                 "output_idx": output_idx, "input_image": good_path, "lpips_score": lpips_score
@@ -307,6 +413,10 @@ if __name__ == "__main__":
     parser.add_argument("--use_compile", action="store_true", help="Enable torch.compile (PyTorch 2.0+)")
     parser.add_argument("--lora_rank", type=int, default=8, help="LoRA rank")
     parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA alpha")
-
+    parser.add_argument("--dilate_mask", type=str, default="False", help="Whether to dilate masks (True/False)")
+    parser.add_argument("--mask_kernel_size", type=int, default=3, help="Size of dilation kernel")
+    
     args = parser.parse_args()
+    args.dilate_mask = args.dilate_mask.lower() == "true" # Handle boolean conversion
+
     inference(args)
