@@ -1,6 +1,10 @@
 # DefectFill: Realistic Defect Generation for Visual Inspection
 
-**DefectFill** is an implementation of an inpainting-based diffusion model designed to generate realistic surface defects for data augmentation in industrial visual inspection.
+Realistic defect image generation via fine-tuned inpainting diffusion models.
+
+> Implementation of **DefectFill: Realistic Defect Generation with Inpainting Diffusion Model for Visual Inspection** (CVPR 2024).
+
+---
 
 Currently, this repository is tuned to generate **cracks in concrete** (using the MVTec AD dataset) as a proof-of-concept. The ultimate goal of this project is to apply these techniques to generate synthetic training data for **cast iron defects** (e.g., blowholes, cracks) in foundry settings.
 
@@ -14,14 +18,21 @@ Below are generated examples showing the model's ability to fill healthy regions
 | ![Result 3](triplet_results/triplet_0002.png) | ![Result 4](triplet_results/triplet_0003.png) | 
 | ![Result 5](triplet_results/triplet_0004.png) | ![Result 6](triplet_results/triplet_0005.png) |
 
-## Methodology
+---
 
-This implementation leverages **Stable Diffusion 2 Inpainting** with **LoRA (Low-Rank Adaptation)** fine-tuning. To ensure high-quality generation that blends seamlessly with the object, the training process utilizes a dual-branch strategy:
+## Overview
 
-1.  **Defect Branch**: Learns the specific texture and features of the defect (e.g., "crack") using a learnable `<defect>` token.
-2.  **Object Branch**: Enforces structural integrity of the non-defective background to prevent the model from hallucinating unwanted changes in the healthy regions.
+DefectFill fine-tunes a Stable Diffusion 2 inpainting model with LoRA to learn a specific defect concept from a small set of reference images. Three complementary loss terms drive training:
 
-During inference, we utilize **LPIPS (Learned Perceptual Image Patch Similarity)** to automatically select the most realistic samples from a batch of generations.
+| Loss | Weight | Purpose |
+|------|--------|---------|
+| **Defect loss** `L_def` | 0.5 | Precisely captures intrinsic defect features |
+| **Object loss** `L_obj` | 0.2 | Learns the semantic relationship between defect and object |
+| **Attention loss** `L_attn` | 0.05 | Ensures [V*] token attends to the defect region |
+
+After training, **Low-Fidelity Selection (LFS)** generates 8 candidates per (image, mask) pair and selects the one with the highest LPIPS score inside the masked region — the most "realistic" defect.
+
+---
 
 ## Installation
 
@@ -37,6 +48,8 @@ During inference, we utilize **LPIPS (Learned Perceptual Image Patch Similarity)
     ```
 
 **Requirements include:** `torch`, `diffusers`, `transformers`, `peft`, `lpips`, and `albumentations`.
+
+---
 
 ## Data Preparation
 
@@ -69,13 +82,13 @@ python train.py \
   --max_train_steps 2000
 ```
 
-Key Arguments:
-
---lambda_defect: Weight for the defect texture loss.
-
---lambda_obj: Weight for the background integrity loss.
-
---alpha: Background blending weight for the object branch.
+Key training details (from paper):
+- **Base model**: `sd2-community/stable-diffusion-2-inpainting`
+- **LoRA** on UNet attention layers + text encoder projection matrices
+- **Warmup**: linear 0 → LR over first 100 steps
+- **Augmentation**: random resize ×[1.0, 1.125] + random crop
+- **Random masks** M_rand: 30 boxes, sides 3–25% of image size
+- **[V*] token**: the word `sks`
 
 ### 2. Inference
 Generate new synthetic defects on healthy images. The script uses LPIPS to pick the best generation from a batch of candidates.
@@ -91,10 +104,55 @@ python inference.py \
   --guidance_scale 2.0
 ```
 
-## Future Work
-Cast Iron Adaptation: Transitioning the domain from concrete textures to metal surfaces to detect manufacturing defects in foundries.
+---
 
-Defect Variety: Expanding support for blowholes, shrinkage, and sand inclusions.
+## Method Details
 
-## References
-This code is an implementation based on the concepts of "DefectFill" for industrial anomaly generation. 	arXiv:2503.13985
+### Defect Loss (Eq. 5)
+
+```
+L_def = E[ || M ⊙ (ε − ε_θ(x_t^def, t, c^def)) ||² ]
+```
+
+Background image: `B_def = (1 − M) ⊙ I`  
+Input: `x_t^def = concat(x_t, b_def, M)`  
+Prompt `P_def = "A photo of sks"`
+
+### Object Loss (Eq. 7)
+
+```
+L_obj = E[ || M' ⊙ (ε − ε_θ(x_t^obj, t, c^obj)) ||² ]
+M' = M + α·(1 − M),   α = 0.3
+```
+
+Random box mask M_rand (30 boxes), `B_rand = (1 − M_rand) ⊙ I`  
+Input: `x_t^obj = concat(x_t, b_rand, M_rand)`  
+Prompt `P_obj = "A <object> with sks"`
+
+### Attention Loss (Eq. 8)
+
+```
+L_attn = E[ || A_t^[V*] − M ||² ]
+```
+
+Cross-attention maps from UNet **decoder** (up_blocks) only, averaged over layers and resized to latent resolution.
+
+### Combined Loss (Eq. 9)
+
+```
+L_ours = 0.5·L_def + 0.2·L_obj + 0.05·L_attn
+```
+
+---
+
+## Citation
+
+```bibtex
+@inproceedings{song2024defectfill,
+  title={DefectFill: Realistic Defect Generation with Inpainting Diffusion Model for Visual Inspection},
+  author={Song, Jaewoo and Park, Daemin and Baek, Kanghyun and Lee, Sangyub and Choi, Jooyoung and Kim, Eunji and Yoon, Sungroh},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year={2024}
+}
+```
+
